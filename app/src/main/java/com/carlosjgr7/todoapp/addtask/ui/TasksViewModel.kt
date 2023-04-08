@@ -5,27 +5,43 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.carlosjgr7.todoapp.addtask.domain.AddTaskUseCase
+import com.carlosjgr7.todoapp.addtask.domain.DeleteTaskUseCase
+import com.carlosjgr7.todoapp.addtask.domain.GetTasksUseCase
+import com.carlosjgr7.todoapp.addtask.domain.UpdateTaskUseCase
 import com.carlosjgr7.todoapp.addtask.ui.Model.TaskModel
-import kotlinx.coroutines.selects.select
+import com.carlosjgr7.todoapp.addtask.ui.TaskUiState.*
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-class TasksViewModel @Inject constructor() : ViewModel() {
+@HiltViewModel
+class TasksViewModel @Inject constructor(
+    private val addTaskUseCase: AddTaskUseCase,
+    private val updateTaskUseCase: UpdateTaskUseCase,
+    private val deleteTaskUseCase: DeleteTaskUseCase,
+    getTasksUseCase: GetTasksUseCase
+) : ViewModel() {
+
+    val uiState: StateFlow<TaskUiState> = getTasksUseCase()
+        .map(::Succes)
+        .catch { Error(it) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Loading)
 
     private val _showDialog = MutableLiveData<Boolean>()
     val showDialog: LiveData<Boolean> = _showDialog
-
-    private val _task = mutableStateListOf<TaskModel>()
-    val task:List<TaskModel> = _task
-
 
     fun onDialogClose() {
         _showDialog.value = false
     }
 
     fun onTaskCreate(task: String) {
-        Log.i(this.javaClass.name, task)
-        _task.add(TaskModel(task=task))
         onDialogClose()
+        viewModelScope.launch {
+            addTaskUseCase(TaskModel(task = task))
+        }
 
     }
 
@@ -35,13 +51,15 @@ class TasksViewModel @Inject constructor() : ViewModel() {
 
 
     fun onChangeSelected(taskModel: TaskModel) {
-        val index = _task.indexOf(taskModel)
-        _task[index] = _task[index].let { it.copy(selected = !it.selected) }
+        viewModelScope.launch {
+            updateTaskUseCase(taskModel.copy(selected = !taskModel.selected))
+        }
     }
 
     fun onDeleteSelected(taskModel: TaskModel) {
-        val task = _task.find { it.id == taskModel.id }
-        _task.remove(task)
+        viewModelScope.launch {
+            deleteTaskUseCase(taskModel)
+        }
     }
 
 }

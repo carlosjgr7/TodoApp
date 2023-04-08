@@ -14,48 +14,69 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.constraintlayout.compose.ConstraintLayout
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.carlosjgr7.todoapp.addtask.ui.Model.TaskModel
 
 
 @Composable
 fun TasksScreen(taskViewModel: TasksViewModel) {
-
     val showDialog: Boolean by taskViewModel.showDialog.observeAsState(initial = false)
-
-    Box(modifier = Modifier.fillMaxSize()) {
-        AddTaskDialog(showDialog,
-            onDissmiss = { taskViewModel.onDialogClose() },
-            onTaskAdded = {
-                taskViewModel.onTaskCreate(it)
-                taskViewModel.onDialogClose()
-            })
-        FabDialog(Modifier.align(Alignment.BottomEnd)) { taskViewModel.showDialogClick() }
-        TaskList(taskViewModel)
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val uiState by produceState<TaskUiState>(
+        initialValue = TaskUiState.Loading,
+        key1 = lifecycle,
+        key2 = taskViewModel
+    ) {
+        lifecycle.repeatOnLifecycle(state = Lifecycle.State.STARTED) {
+            taskViewModel.uiState.collect { value = it }
+        }
     }
+    when (uiState) {
+        is TaskUiState.Error -> {
+            TODO()
+        }
+        TaskUiState.Loading -> {
+            CircularProgressIndicator()
+        }
+        is TaskUiState.Succes -> {
+            Box(modifier = Modifier.fillMaxSize()) {
+                AddTaskDialog(showDialog,
+                    onDissmiss = { taskViewModel.onDialogClose() },
+                    onTaskAdded = {
+                        taskViewModel.onTaskCreate(it)
+                        taskViewModel.onDialogClose()
+                    })
+                FabDialog(Modifier.align(Alignment.BottomEnd)) { taskViewModel.showDialogClick() }
+                TaskList((uiState as TaskUiState.Succes).tasks,taskViewModel)
+            }
+        }
+    }
+
+
 }
 
 @Composable
-fun TaskList(taskViewModel: TasksViewModel) {
-    val myTask: List<TaskModel> = taskViewModel.task
-
+fun TaskList(tasks: List<TaskModel>,taskViewModel:TasksViewModel) {
     LazyColumn {
-        items(myTask, key = { it.id }) {
-            itemTask(
+        items(tasks, key = { it.id }) {
+            ItemTask(
                 taskModel = it,
                 onCheckboxChange = { taskViewModel.onChangeSelected(it) },
-                onDeleteTask ={taskViewModel.onDeleteSelected(it) }
+                onDeleteTask = { taskViewModel.onDeleteSelected(it) }
             )
         }
     }
 }
 
 @Composable
-fun itemTask(
+fun ItemTask(
     taskModel: TaskModel,
     onCheckboxChange: (TaskModel) -> Unit,
     onDeleteTask: (TaskModel) -> Unit
@@ -185,7 +206,10 @@ fun FabConstrainDialog(modifier: Modifier, onShowDialog: () -> Unit) {
 
 @Composable
 fun AddTaskConstrainDialog(
-    modifier: Modifier, show: Boolean, onDissmiss: () -> Unit, onTaskAdded: (String) -> Unit
+    modifier: Modifier,
+    show: Boolean,
+    onDissmiss: () -> Unit,
+    onTaskAdded: (String) -> Unit
 ) {
     var myTask by remember { mutableStateOf("") }
     if (show) {
